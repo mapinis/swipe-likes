@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   animate,
   motion,
@@ -12,6 +12,8 @@ import { Card, type CardPlayback } from "./Card.tsx";
 
 const FLING_THRESHOLD = 100;
 const FLING_VELOCITY = 500;
+const SCROLL_CLAMP = 240; // how far the card tracks a scroll gesture
+const SCROLL_END_MS = 130; // idle gap that marks the end of a scroll gesture
 
 export function SwipeDeck({
   current,
@@ -35,6 +37,7 @@ export function SwipeDeck({
   const keepOpacity = useTransform(x, [30, 130], [0, 1]);
   const tossOpacity = useTransform(x, [-30, -130], [0, 1]);
   const [busy, setBusy] = useState(false);
+  const cooldownUntil = useRef(0);
 
   const swipe = useCallback(
     async (decision: Decision) => {
@@ -45,6 +48,8 @@ export function SwipeDeck({
       await animate(x, dir * distance, { duration: 0.28, ease: "easeIn" }).finished;
       onSwipe(current.saved.track.id, decision);
       x.set(0); // reset for the incoming card before it paints
+      // Absorb trackpad momentum so one gesture can't skip a second card.
+      cooldownUntil.current = Date.now() + 300;
       setBusy(false);
     },
     [busy, current, onSwipe, x],
@@ -55,6 +60,38 @@ export function SwipeDeck({
     onSkip(current.saved.track.id);
     x.set(0);
   }, [busy, current, onSkip, x]);
+
+  // Two-finger horizontal scroll (trackpad) → swipe. A wheel gesture has no
+  // "end" event, so commit after a short idle gap. preventDefault stops the
+  // browser's back/forward swipe navigation.
+  const cardAreaRef = useRef<HTMLDivElement>(null);
+  const scrollEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const el = cardAreaRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // ignore vertical
+      e.preventDefault();
+      if (busy || Date.now() < cooldownUntil.current) return;
+      const next = Math.max(
+        -SCROLL_CLAMP,
+        Math.min(SCROLL_CLAMP, x.get() + e.deltaX),
+      );
+      x.set(next);
+      if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
+      scrollEndTimer.current = setTimeout(() => {
+        const v = x.get();
+        if (v > FLING_THRESHOLD) void swipe("keep");
+        else if (v < -FLING_THRESHOLD) void swipe("toss");
+        else animate(x, 0, { type: "spring", stiffness: 300, damping: 30 });
+      }, SCROLL_END_MS);
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
+    };
+  }, [busy, swipe, x]);
 
   function handleDragEnd(_e: unknown, info: PanInfo) {
     if (info.offset.x > FLING_THRESHOLD || info.velocity.x > FLING_VELOCITY) {
@@ -79,7 +116,11 @@ export function SwipeDeck({
 
   return (
     <div className="flex w-full max-w-sm flex-col items-center gap-6 md:h-full md:max-w-none md:justify-center">
-      <div className="relative aspect-[3/4.3] w-full md:h-[70vh] md:max-h-[680px] md:w-auto">
+      <div
+        ref={cardAreaRef}
+        style={{ overscrollBehaviorX: "none" }}
+        className="relative aspect-[3/4.3] w-full md:h-[70vh] md:max-h-[680px] md:w-auto"
+      >
         {upcoming.map((c, i) => (
           <div
             key={c.saved.track.id}
@@ -155,7 +196,7 @@ export function SwipeDeck({
         </button>
       </div>
       <p className="text-xs text-neutral-500">
-        Drag or ← toss · → keep · ↓ skip · Z undo
+        Scroll or drag · ← toss · → keep · ↓ skip · Z undo
       </p>
     </div>
   );
