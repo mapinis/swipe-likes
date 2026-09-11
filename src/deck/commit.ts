@@ -39,7 +39,6 @@ export async function commitToss(
   if (!playlist) {
     playlist = await createPlaylist(
       client,
-      userId,
       SWIPED_OUT_PLAYLIST_NAME,
       "Songs swiped out of Liked Songs — your recovery net.",
     );
@@ -61,7 +60,7 @@ export async function commitToss(
   });
   await removeSavedTracks(
     client,
-    items.map((i) => i.id),
+    items.map((i) => i.uri),
   );
 
   onProgress?.({ phase: "done", message: "Done." });

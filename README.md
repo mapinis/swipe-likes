@@ -95,8 +95,12 @@ npm run build      # production build to dist/
 
 - **Development mode**: the app is limited to allow-listed users and can't be
   shared publicly — fine for personal use.
-- **No in-app playback**: 30-second preview URLs were deprecated; cards link out
-  to Spotify instead.
+- **Previews** stream via the Web Playback SDK (full track, ~15s snippet), which
+  needs Premium and a Chrome/Edge/Firefox browser. The old 30s `preview_url`
+  clips were deprecated, so there's no lightweight fallback in other browsers.
+- **API currency**: uses the post-Feb-2026 write endpoints (`POST /me/playlists`,
+  `POST /playlists/{id}/items`, `DELETE /me/library`); the pre-2026 equivalents
+  now return 403 for development-mode apps.
 - **Genres are best-effort**: if the artist-genre endpoint is unavailable for
   your app, the genre-drift factor is simply skipped and the other factors are
   re-weighted.

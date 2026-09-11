@@ -72,12 +72,14 @@ export async function getArtists(
   return out;
 }
 
+// Feb 2026 migration: DELETE /me/tracks → DELETE /me/library, which takes
+// Spotify URIs (not IDs) and works across content types.
 export async function removeSavedTracks(
   client: SpotifyClient,
-  ids: string[],
+  uris: string[],
 ): Promise<void> {
-  for (const batch of chunk(ids, 50)) {
-    await client.request("/me/tracks", { method: "DELETE", body: { ids: batch } });
+  for (const batch of chunk(uris, 50)) {
+    await client.request("/me/library", { method: "DELETE", body: { uris: batch } });
   }
 }
 
@@ -98,25 +100,26 @@ export async function findPlaylistByName(
   );
 }
 
+// Feb 2026 migration: POST /users/{id}/playlists → POST /me/playlists.
 export function createPlaylist(
   client: SpotifyClient,
-  userId: string,
   name: string,
   description = "",
 ): Promise<Playlist> {
-  return client.request<Playlist>(`/users/${userId}/playlists`, {
+  return client.request<Playlist>("/me/playlists", {
     method: "POST",
     body: { name, public: false, description },
   });
 }
 
+// Feb 2026 migration: POST /playlists/{id}/tracks → POST /playlists/{id}/items.
 export async function addTracksToPlaylist(
   client: SpotifyClient,
   playlistId: string,
   uris: string[],
 ): Promise<void> {
   for (const batch of chunk(uris, 100)) {
-    await client.request(`/playlists/${playlistId}/tracks`, {
+    await client.request(`/playlists/${playlistId}/items`, {
       method: "POST",
       body: { uris: batch },
     });
