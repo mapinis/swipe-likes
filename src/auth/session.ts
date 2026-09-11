@@ -56,6 +56,11 @@ export function isLoggedIn(): boolean {
   return loadTokens() !== null;
 }
 
+export function hasScope(scope: string): boolean {
+  const tokens = loadTokens();
+  return tokens ? tokens.scope.split(" ").includes(scope) : false;
+}
+
 function toTokenSet(res: TokenResponse, previous?: TokenSet | null): TokenSet {
   return {
     accessToken: res.access_token,

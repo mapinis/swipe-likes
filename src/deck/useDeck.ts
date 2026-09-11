@@ -8,18 +8,37 @@ import {
   decide,
   emptyDeck,
   pendingDeck,
+  skip,
   tossedIds,
   undo,
   type DeckState,
   type Decision,
+  type UndoEntry,
 } from "./deck.ts";
 
 const STORE_KEY = "sp.deck";
 
+function normalize(raw: unknown): DeckState {
+  const r = (raw ?? {}) as Partial<DeckState> & { undoStack?: unknown };
+  const undoStack: UndoEntry[] = Array.isArray(r.undoStack)
+    ? r.undoStack.map((e) =>
+        typeof e === "string"
+          ? { id: e, kind: "decision" as const }
+          : (e as UndoEntry),
+      )
+    : [];
+  return {
+    decisions: r.decisions ?? {},
+    committed: r.committed ?? [],
+    undoStack: undoStack.filter((e) => e.kind === "decision"),
+    skipped: [], // session-only, never restored
+  };
+}
+
 function loadDeckState(): DeckState {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (raw) return JSON.parse(raw) as DeckState;
+    if (raw) return normalize(JSON.parse(raw));
   } catch {
     // ignore
   }
@@ -31,7 +50,15 @@ export function useDeck(scored: ScoredTrack[]) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+      // Persist decisions/committed only. Skips and their undo entries are
+      // session-only so skipped cards reappear on the next reload.
+      const persisted: DeckState = {
+        decisions: state.decisions,
+        committed: state.committed,
+        undoStack: state.undoStack.filter((e) => e.kind === "decision"),
+        skipped: [],
+      };
+      localStorage.setItem(STORE_KEY, JSON.stringify(persisted));
     } catch {
       // ignore quota/private-mode failures
     }
@@ -40,6 +67,10 @@ export function useDeck(scored: ScoredTrack[]) {
   const swipe = useCallback(
     (trackId: string, decision: Decision) =>
       setState((s) => decide(s, trackId, decision)),
+    [],
+  );
+  const skipCard = useCallback(
+    (trackId: string) => setState((s) => skip(s, trackId)),
     [],
   );
   const undoLast = useCallback(() => setState((s) => undo(s)), []);
@@ -62,6 +93,7 @@ export function useDeck(scored: ScoredTrack[]) {
     tossedIds: tossed,
     canUndo: canUndo(state),
     swipe,
+    skipCard,
     undoLast,
     applyCommit,
     reset,

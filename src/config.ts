@@ -14,6 +14,9 @@ export const SCOPES = [
   "user-read-recently-played",
   "playlist-read-private",
   "playlist-modify-private",
+  "streaming",
+  "user-modify-playback-state",
+  "user-read-playback-state",
 ];
 
 export const SWIPED_OUT_PLAYLIST_NAME = "Swiped Out";

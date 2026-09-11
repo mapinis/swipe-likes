@@ -12,7 +12,19 @@ function scoreLabel(score: number): string {
   return "You love this";
 }
 
-export function Card({ card }: { card: ScoredTrack }) {
+export interface CardPlayback {
+  isPlaying: boolean;
+  isLoading: boolean;
+  onToggle: () => void;
+}
+
+export function Card({
+  card,
+  playback,
+}: {
+  card: ScoredTrack;
+  playback?: CardPlayback;
+}) {
   const t = card.saved.track;
   const art = t.album.images[0]?.url;
   const artists = t.artists.map((a) => a.name).join(", ");
@@ -41,6 +53,26 @@ export function Card({ card }: { card: ScoredTrack }) {
             toss score
           </span>
         </div>
+
+        {playback && (
+          <button
+            onPointerDownCapture={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              playback.onToggle();
+            }}
+            aria-label={playback.isPlaying ? "Pause preview" : "Play preview"}
+            className="absolute bottom-3 left-3 flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-xl text-white backdrop-blur transition hover:scale-110 hover:bg-black/70"
+          >
+            {playback.isLoading ? (
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+            ) : playback.isPlaying ? (
+              "⏸"
+            ) : (
+              "▶"
+            )}
+          </button>
+        )}
       </div>
 
       <div className="flex flex-1 flex-col gap-3 p-5">

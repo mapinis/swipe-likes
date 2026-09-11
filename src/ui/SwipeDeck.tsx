@@ -8,7 +8,7 @@ import {
 } from "framer-motion";
 import type { ScoredTrack } from "../scoring/score.ts";
 import type { Decision } from "../deck/deck.ts";
-import { Card } from "./Card.tsx";
+import { Card, type CardPlayback } from "./Card.tsx";
 
 const FLING_THRESHOLD = 110;
 
@@ -16,10 +16,12 @@ function DraggableCard({
   card,
   dir,
   onFling,
+  playback,
 }: {
   card: ScoredTrack;
   dir: number;
   onFling: (decision: Decision) => void;
+  playback?: CardPlayback;
 }) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-240, 240], [-16, 16]);
@@ -55,7 +57,7 @@ function DraggableCard({
       >
         TOSS
       </motion.div>
-      <Card card={card} />
+      <Card card={card} playback={playback} />
     </motion.div>
   );
 }
@@ -65,13 +67,17 @@ export function SwipeDeck({
   upcoming,
   canUndo,
   onSwipe,
+  onSkip,
   onUndo,
+  playback,
 }: {
   current: ScoredTrack;
   upcoming: ScoredTrack[];
   canUndo: boolean;
   onSwipe: (trackId: string, decision: Decision) => void;
+  onSkip: (trackId: string) => void;
   onUndo: () => void;
+  playback?: CardPlayback;
 }) {
   const dirRef = useRef(0);
   const [, force] = useState(0);
@@ -82,10 +88,16 @@ export function SwipeDeck({
     onSwipe(current.saved.track.id, decision);
   }
 
+  function skip() {
+    dirRef.current = 0;
+    onSkip(current.saved.track.id);
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "ArrowRight") fling("keep");
       else if (e.key === "ArrowLeft") fling("toss");
+      else if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") skip();
       else if (e.key.toLowerCase() === "z" && canUndo) onUndo();
     }
     window.addEventListener("keydown", onKey);
@@ -115,11 +127,12 @@ export function SwipeDeck({
             card={current}
             dir={dirRef.current}
             onFling={fling}
+            playback={playback}
           />
         </AnimatePresence>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <button
           onClick={() => fling("toss")}
           aria-label="Toss"
@@ -131,9 +144,17 @@ export function SwipeDeck({
           onClick={onUndo}
           disabled={!canUndo}
           aria-label="Undo"
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-neutral-700 text-lg text-white shadow-lg transition hover:scale-105 enabled:hover:bg-neutral-600 disabled:opacity-40"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-700 text-lg text-white shadow-lg transition hover:scale-105 enabled:hover:bg-neutral-600 disabled:opacity-40"
         >
           ↩
+        </button>
+        <button
+          onClick={skip}
+          aria-label="Skip for now"
+          title="Skip for now — see it again later"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-700 text-lg text-white shadow-lg transition hover:scale-105 hover:bg-neutral-600"
+        >
+          ⤼
         </button>
         <button
           onClick={() => fling("keep")}
@@ -144,7 +165,7 @@ export function SwipeDeck({
         </button>
       </div>
       <p className="text-xs text-neutral-500">
-        Swipe or use ← toss · → keep · Z undo
+        ← toss · → keep · ↓ skip · Z undo
       </p>
     </div>
   );

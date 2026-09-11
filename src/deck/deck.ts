@@ -2,16 +2,24 @@ import type { ScoredTrack } from "../scoring/score.ts";
 
 export type Decision = "toss" | "keep";
 
+export interface UndoEntry {
+  id: string;
+  kind: "decision" | "skip";
+}
+
 export interface DeckState {
   decisions: Record<string, Decision>;
-  undoStack: string[];
+  undoStack: UndoEntry[];
   committed: string[];
+  /** Session-only "see it again later" set — never persisted. */
+  skipped: string[];
 }
 
 export const emptyDeck: DeckState = {
   decisions: {},
   undoStack: [],
   committed: [],
+  skipped: [],
 };
 
 export function decide(
@@ -22,16 +30,27 @@ export function decide(
   return {
     ...state,
     decisions: { ...state.decisions, [trackId]: decision },
-    undoStack: [...state.undoStack, trackId],
+    undoStack: [...state.undoStack, { id: trackId, kind: "decision" }],
+  };
+}
+
+export function skip(state: DeckState, trackId: string): DeckState {
+  return {
+    ...state,
+    skipped: [...state.skipped, trackId],
+    undoStack: [...state.undoStack, { id: trackId, kind: "skip" }],
   };
 }
 
 export function undo(state: DeckState): DeckState {
   if (state.undoStack.length === 0) return state;
   const undoStack = state.undoStack.slice(0, -1);
-  const lastId = state.undoStack[state.undoStack.length - 1];
+  const last = state.undoStack[state.undoStack.length - 1];
+  if (last.kind === "skip") {
+    return { ...state, undoStack, skipped: state.skipped.filter((id) => id !== last.id) };
+  }
   const decisions = { ...state.decisions };
-  delete decisions[lastId];
+  delete decisions[last.id];
   return { ...state, decisions, undoStack };
 }
 
@@ -54,8 +73,9 @@ export function commitTossed(state: DeckState): DeckState {
     if (!tossedSet.has(id)) decisions[id] = d;
   }
   return {
+    ...state,
     decisions,
-    undoStack: state.undoStack.filter((id) => !tossedSet.has(id)),
+    undoStack: state.undoStack.filter((e) => !tossedSet.has(e.id)),
     committed: [...state.committed, ...tossed],
   };
 }
@@ -65,9 +85,11 @@ export function pendingDeck(
   state: DeckState,
 ): ScoredTrack[] {
   const committed = new Set(state.committed);
-  return scored.filter(
-    (s) => !committed.has(s.saved.track.id) && !(s.saved.track.id in state.decisions),
-  );
+  const skipped = new Set(state.skipped);
+  return scored.filter((s) => {
+    const id = s.saved.track.id;
+    return !committed.has(id) && !skipped.has(id) && !(id in state.decisions);
+  });
 }
 
 export function currentCard(
@@ -81,6 +103,7 @@ export interface DeckCounts {
   remaining: number;
   tossed: number;
   kept: number;
+  skipped: number;
   committed: number;
 }
 
@@ -95,6 +118,7 @@ export function counts(scored: ScoredTrack[], state: DeckState): DeckCounts {
     remaining: pendingDeck(scored, state).length,
     tossed,
     kept,
+    skipped: state.skipped.length,
     committed: state.committed.length,
   };
 }

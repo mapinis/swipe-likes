@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { MOCK } from "../config.ts";
-import { handleRedirectCallback, isLoggedIn, logout } from "../auth/session.ts";
+import {
+  beginLogin,
+  handleRedirectCallback,
+  isLoggedIn,
+  logout,
+} from "../auth/session.ts";
 import { client, getSnapshot } from "../data/source.ts";
 import { toScoringInput, type Snapshot } from "../data/cache.ts";
 import { scoreLibrary, type ScoredTrack } from "../scoring/score.ts";
 import { commitToss } from "../deck/commit.ts";
 import { useDeck } from "../deck/useDeck.ts";
+import { usePlayer } from "../player/usePlayer.ts";
 import { SwipeDeck } from "./SwipeDeck.tsx";
 import { CommitReview } from "./CommitReview.tsx";
 import { Login } from "./Login.tsx";
@@ -65,6 +71,20 @@ export function App() {
   }, [loadData]);
 
   const deck = useDeck(scored);
+  const currentTrack = deck.current?.saved.track ?? null;
+  const player = usePlayer(currentTrack);
+
+  const playback = useMemo(() => {
+    if (!currentTrack) return undefined;
+    return {
+      isPlaying: player.playingId === currentTrack.id,
+      isLoading: player.loading && player.playingId === currentTrack.id,
+      onToggle: () =>
+        player.needsReconnect
+          ? void beginLogin().catch(() => {})
+          : player.toggle(currentTrack),
+    };
+  }, [currentTrack, player]);
 
   const tossedCards = useMemo(() => {
     const ids = new Set(deck.tossedIds);
@@ -133,7 +153,8 @@ export function App() {
             {MOCK && <span className="ml-2 text-xs text-amber-400">demo</span>}
           </p>
           <p className="text-xs text-neutral-500">
-            {counts.remaining} left · {counts.tossed} tossed · {counts.committed} removed
+            {counts.remaining} left · {counts.tossed} tossed
+            {counts.skipped > 0 && ` · ${counts.skipped} skipped`} · {counts.committed} removed
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -160,6 +181,30 @@ export function App() {
         </div>
       </header>
 
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 px-4 py-2 text-xs">
+        <label className="flex cursor-pointer items-center gap-2 text-neutral-300">
+          <input
+            type="checkbox"
+            checked={player.autoPlay}
+            onChange={(e) => player.setAutoPlay(e.target.checked)}
+            className="h-4 w-4 accent-emerald-500"
+          />
+          Auto-play preview
+        </label>
+        {player.needsReconnect ? (
+          <button
+            onClick={() => void beginLogin().catch(() => {})}
+            className="text-amber-400 underline decoration-dotted"
+          >
+            Reconnect to enable previews
+          </button>
+        ) : player.error ? (
+          <span className="truncate text-rose-400">{player.error}</span>
+        ) : (
+          <span className="text-neutral-600">plays ~15s from the hook</span>
+        )}
+      </div>
+
       <main className="flex flex-1 items-center justify-center px-4 py-6">
         {current ? (
           <SwipeDeck
@@ -167,7 +212,9 @@ export function App() {
             upcoming={deck.upcoming}
             canUndo={deck.canUndo}
             onSwipe={deck.swipe}
+            onSkip={deck.skipCard}
             onUndo={deck.undoLast}
+            playback={playback}
           />
         ) : (
           <div className="max-w-sm text-center">

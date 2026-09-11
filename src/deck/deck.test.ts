@@ -5,6 +5,7 @@ import {
   currentCard,
   decide,
   emptyDeck,
+  skip,
   tossedIds,
   undo,
 } from "./deck.ts";
@@ -40,7 +41,23 @@ test("deciding advances the deck and records the decision", () => {
   s = decide(s, "b", "keep");
   expect(currentCard(deck, s)?.saved.track.id).toBe("c");
   expect(tossedIds(s)).toEqual(["a"]);
-  expect(counts(deck, s)).toEqual({ remaining: 1, tossed: 1, kept: 1, committed: 0 });
+  expect(counts(deck, s)).toEqual({
+    remaining: 1,
+    tossed: 1,
+    kept: 1,
+    skipped: 0,
+    committed: 0,
+  });
+});
+
+test("skip hides the card without recording a decision; undo brings it back", () => {
+  let s = skip(emptyDeck, "a");
+  expect(currentCard(deck, s)?.saved.track.id).toBe("b");
+  expect(s.decisions.a).toBeUndefined();
+  expect(counts(deck, s)).toMatchObject({ skipped: 1, tossed: 0, kept: 0 });
+  s = undo(s);
+  expect(currentCard(deck, s)?.saved.track.id).toBe("a");
+  expect(counts(deck, s)).toMatchObject({ skipped: 0 });
 });
 
 test("undo restores the previous card and clears its decision", () => {

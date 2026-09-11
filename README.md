@@ -67,11 +67,19 @@ review without connecting an account.
 
 ## Using it
 
-- **Swipe / ← / ✕** to toss, **swipe / → / ♥** to keep, **↩ / Z** to undo.
-- Decisions are staged locally (and survive a reload) — nothing changes on
-  Spotify until you hit **Review** and confirm.
-- On confirm, tossed songs are copied to your private **"Swiped Out"** playlist,
-  then removed from Liked Songs. Re-like them anytime if you change your mind.
+- **Swipe / ← / ✕** to toss, **swipe / → / ♥** to keep, **↓ / ⤼** to skip,
+  **↩ / Z** to undo.
+- **Keep** and **toss** are remembered locally (they survive a reload).
+  **Skip** is "see it again later" — it hides the card for now but the song
+  comes back the next time you reload or refresh.
+- Nothing changes on Spotify until you hit **Review** and confirm. On confirm,
+  tossed songs are copied to your private **"Swiped Out"** playlist, then removed
+  from Liked Songs. Re-like them anytime if you change your mind.
+- **▶ Preview** plays ~15 seconds from ~30% into the track (the "hook"). Tick
+  **Auto-play preview** to start the snippet automatically whenever a new card
+  appears. Preview needs the Web Playback SDK scopes — if you connected before
+  this feature existed, click **Reconnect to enable previews** once. Preview
+  needs a Chrome/Edge/Firefox browser (Safari can't stream via the SDK).
 - **⟳** refetches your library and re-scores. **⎋** logs out.
 
 ## Scripts
