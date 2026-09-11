@@ -60,6 +60,8 @@ export function App() {
           return loadData();
         })
         .catch((e) => {
+          // Clear the (now-used) code from the URL so a reload can't re-exchange it.
+          window.history.replaceState({}, "", "/");
           setErrorMsg((e as Error).message);
           setPhase("error");
         });
@@ -132,10 +134,12 @@ export function App() {
           <p className="text-lg font-semibold text-rose-400">Something went wrong</p>
           <p className="mt-2 break-words text-sm text-neutral-400">{errorMsg}</p>
           <button
-            onClick={() => loadData()}
-            className="mt-5 rounded-full bg-neutral-700 px-5 py-2 text-neutral-100 hover:bg-neutral-600"
+            onClick={() =>
+              isLoggedIn() ? loadData() : void beginLogin().catch(() => {})
+            }
+            className="mt-5 rounded-full bg-emerald-500 px-5 py-2 font-semibold text-neutral-950 hover:bg-emerald-400"
           >
-            Try again
+            {isLoggedIn() ? "Try again" : "Connect Spotify"}
           </button>
         </div>
       </Centered>

@@ -1,4 +1,9 @@
-import { scopeStringHasAll, tokenIsFresh } from "./session.ts";
+import {
+  handleRedirectCallback,
+  loadTokens,
+  scopeStringHasAll,
+  tokenIsFresh,
+} from "./session.ts";
 
 test("tokenIsFresh respects the refresh buffer", () => {
   const now = 1_000_000;
@@ -19,4 +24,36 @@ test("scopeStringHasAll requires every scope to be present", () => {
     ]),
   ).toBe(false);
   expect(scopeStringHasAll("", ["streaming"])).toBe(false);
+});
+
+test("handleRedirectCallback exchanges the code only once (StrictMode-safe)", async () => {
+  sessionStorage.setItem("sp.pkce.state", "xyz");
+  sessionStorage.setItem("sp.pkce.verifier", "v".repeat(64));
+  window.history.pushState({}, "", "/callback?code=abc&state=xyz");
+
+  const fetchMock = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          access_token: "a",
+          token_type: "Bearer",
+          scope: "streaming",
+          expires_in: 3600,
+          refresh_token: "r",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+
+  // Two concurrent calls (as StrictMode's double effect would produce).
+  await Promise.all([handleRedirectCallback(), handleRedirectCallback()]);
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(loadTokens()?.accessToken).toBe("a");
+
+  vi.unstubAllGlobals();
+  window.history.pushState({}, "", "/");
+  localStorage.clear();
+  sessionStorage.clear();
 });

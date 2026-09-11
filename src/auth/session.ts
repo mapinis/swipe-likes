@@ -110,7 +110,19 @@ export async function beginLogin(): Promise<void> {
   );
 }
 
-export async function handleRedirectCallback(): Promise<void> {
+let callbackInFlight: Promise<void> | null = null;
+
+/**
+ * Idempotent: the authorization code can only be exchanged once. React
+ * StrictMode double-invokes effects in dev, so guard against a second call
+ * consuming the same (already-used) code and getting `invalid_grant`.
+ */
+export function handleRedirectCallback(): Promise<void> {
+  if (!callbackInFlight) callbackInFlight = runRedirectCallback();
+  return callbackInFlight;
+}
+
+async function runRedirectCallback(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   const error = params.get("error");
   if (error) throw new Error(`Spotify authorization failed: ${error}`);
