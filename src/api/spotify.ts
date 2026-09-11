@@ -72,14 +72,17 @@ export async function getArtists(
   return out;
 }
 
-// Feb 2026 migration: DELETE /me/tracks → DELETE /me/library, which takes
-// Spotify URIs (not IDs) and works across content types.
+// Feb 2026 migration: DELETE /me/tracks → DELETE /me/library. URIs (not IDs)
+// go in the `uris` QUERY param as a comma-separated list, max 40 per request.
 export async function removeSavedTracks(
   client: SpotifyClient,
   uris: string[],
 ): Promise<void> {
-  for (const batch of chunk(uris, 50)) {
-    await client.request("/me/library", { method: "DELETE", body: { uris: batch } });
+  for (const batch of chunk(uris, 40)) {
+    await client.request("/me/library", {
+      method: "DELETE",
+      query: { uris: batch.join(",") },
+    });
   }
 }
 
@@ -124,4 +127,26 @@ export async function addTracksToPlaylist(
       body: { uris: batch },
     });
   }
+}
+
+interface PlaylistItem {
+  track?: { uri?: string };
+  item?: { uri?: string };
+}
+
+/** URIs already in a playlist, so re-running a commit doesn't add duplicates. */
+export async function getPlaylistItemUris(
+  client: SpotifyClient,
+  playlistId: string,
+): Promise<Set<string>> {
+  const items = await client.getAllPages<PlaylistItem>(
+    `/playlists/${playlistId}/items`,
+    { limit: 50 },
+  );
+  const uris = new Set<string>();
+  for (const el of items) {
+    const uri = el.track?.uri ?? el.item?.uri;
+    if (uri) uris.add(uri);
+  }
+  return uris;
 }

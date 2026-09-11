@@ -3,6 +3,7 @@ import {
   addTracksToPlaylist,
   createPlaylist,
   findPlaylistByName,
+  getPlaylistItemUris,
   removeSavedTracks,
 } from "../api/spotify.ts";
 import { SWIPED_OUT_PLAYLIST_NAME } from "../config.ts";
@@ -48,11 +49,13 @@ export async function commitToss(
     phase: "backup",
     message: `Backing up ${items.length} songs to "${SWIPED_OUT_PLAYLIST_NAME}"…`,
   });
-  await addTracksToPlaylist(
-    client,
-    playlist.id,
-    items.map((i) => i.uri),
+  // Skip tracks already backed up so a re-run (e.g. after a failed removal)
+  // doesn't create duplicates.
+  const already = await getPlaylistItemUris(client, playlist.id).catch(
+    () => new Set<string>(),
   );
+  const toAdd = items.filter((i) => !already.has(i.uri)).map((i) => i.uri);
+  if (toAdd.length > 0) await addTracksToPlaylist(client, playlist.id, toAdd);
 
   onProgress?.({
     phase: "remove",
