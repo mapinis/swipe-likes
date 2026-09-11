@@ -1,10 +1,237 @@
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { MOCK } from "../config.ts";
+import { handleRedirectCallback, isLoggedIn, logout } from "../auth/session.ts";
+import { client, getSnapshot } from "../data/source.ts";
+import { toScoringInput, type Snapshot } from "../data/cache.ts";
+import { scoreLibrary, type ScoredTrack } from "../scoring/score.ts";
+import { commitToss } from "../deck/commit.ts";
+import { useDeck } from "../deck/useDeck.ts";
+import { SwipeDeck } from "./SwipeDeck.tsx";
+import { CommitReview } from "./CommitReview.tsx";
+import { Login } from "./Login.tsx";
+
+type Phase = "init" | "login" | "loading" | "error" | "ready";
+
 export function App() {
+  const [phase, setPhase] = useState<Phase>("init");
+  const [loadingMsg, setLoadingMsg] = useState("Loading…");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [scored, setScored] = useState<ScoredTrack[]>([]);
+  const [reviewing, setReviewing] = useState(false);
+
+  const loadData = useCallback(async (force = false) => {
+    setPhase("loading");
+    setLoadingMsg(force ? "Refreshing your library…" : "Loading your library…");
+    try {
+      const snap = await getSnapshot({
+        force,
+        onProgress: (p) =>
+          setLoadingMsg(
+            p.total
+              ? `${p.phase}… ${p.collected}/${p.total}`
+              : p.collected
+                ? `${p.phase}… ${p.collected}`
+                : `${p.phase}…`,
+          ),
+      });
+      setSnapshot(snap);
+      setScored(scoreLibrary(toScoringInput(snap)));
+      setPhase("ready");
+    } catch (e) {
+      setErrorMsg((e as Error).message);
+      setPhase("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (window.location.pathname === "/callback") {
+      setPhase("loading");
+      setLoadingMsg("Finishing sign-in…");
+      handleRedirectCallback()
+        .then(() => {
+          window.history.replaceState({}, "", "/");
+          return loadData();
+        })
+        .catch((e) => {
+          setErrorMsg((e as Error).message);
+          setPhase("error");
+        });
+    } else if (MOCK || isLoggedIn()) {
+      loadData();
+    } else {
+      setPhase("login");
+    }
+  }, [loadData]);
+
+  const deck = useDeck(scored);
+
+  const tossedCards = useMemo(() => {
+    const ids = new Set(deck.tossedIds);
+    return scored.filter((s) => ids.has(s.saved.track.id));
+  }, [scored, deck.tossedIds]);
+
+  const handleConfirmCommit = useCallback(async () => {
+    if (!snapshot) return;
+    if (!MOCK) {
+      await commitToss(
+        client,
+        snapshot.user.id,
+        tossedCards.map((c) => ({
+          id: c.saved.track.id,
+          uri: c.saved.track.uri,
+        })),
+      );
+    }
+    deck.applyCommit();
+    setReviewing(false);
+  }, [snapshot, tossedCards, deck]);
+
+  function onLogout() {
+    logout();
+    deck.reset();
+    setSnapshot(null);
+    setScored([]);
+    setPhase("login");
+  }
+
+  if (phase === "init" || phase === "loading") {
+    return <Centered>{<Spinner label={loadingMsg} />}</Centered>;
+  }
+  if (phase === "login") {
+    return (
+      <Shell>
+        <Login onError={(e) => { setErrorMsg(e.message); setPhase("error"); }} />
+      </Shell>
+    );
+  }
+  if (phase === "error") {
+    return (
+      <Centered>
+        <div className="max-w-md text-center">
+          <p className="text-lg font-semibold text-rose-400">Something went wrong</p>
+          <p className="mt-2 break-words text-sm text-neutral-400">{errorMsg}</p>
+          <button
+            onClick={() => loadData()}
+            className="mt-5 rounded-full bg-neutral-700 px-5 py-2 text-neutral-100 hover:bg-neutral-600"
+          >
+            Try again
+          </button>
+        </div>
+      </Centered>
+    );
+  }
+
+  const { counts, current } = deck;
+
+  return (
+    <Shell>
+      <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-neutral-100">
+            {snapshot?.user.display_name ?? "You"}
+            {MOCK && <span className="ml-2 text-xs text-amber-400">demo</span>}
+          </p>
+          <p className="text-xs text-neutral-500">
+            {counts.remaining} left · {counts.tossed} tossed · {counts.committed} removed
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setReviewing(true)}
+            disabled={counts.tossed === 0}
+            className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition enabled:hover:bg-rose-500 disabled:opacity-40"
+          >
+            Review {counts.tossed > 0 ? counts.tossed : ""} ⟶
+          </button>
+          <button
+            onClick={() => loadData(true)}
+            title="Refresh data"
+            className="rounded-full bg-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-700"
+          >
+            ⟳
+          </button>
+          <button
+            onClick={onLogout}
+            className="rounded-full bg-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-700"
+          >
+            ⎋
+          </button>
+        </div>
+      </header>
+
+      <main className="flex flex-1 items-center justify-center px-4 py-6">
+        {current ? (
+          <SwipeDeck
+            current={current}
+            upcoming={deck.upcoming}
+            canUndo={deck.canUndo}
+            onSwipe={deck.swipe}
+            onUndo={deck.undoLast}
+          />
+        ) : (
+          <div className="max-w-sm text-center">
+            <p className="text-5xl">🎉</p>
+            <p className="mt-4 text-xl font-semibold text-neutral-100">
+              {counts.tossed > 0 ? "Ready to clean up" : "Deck cleared!"}
+            </p>
+            <p className="mt-2 text-sm text-neutral-400">
+              {counts.tossed > 0
+                ? `You've queued ${counts.tossed} song${counts.tossed === 1 ? "" : "s"} to toss.`
+                : "No more songs to review right now."}
+            </p>
+            <div className="mt-5 flex justify-center gap-3">
+              {counts.tossed > 0 && (
+                <button
+                  onClick={() => setReviewing(true)}
+                  className="rounded-full bg-rose-600 px-5 py-2 font-semibold text-white hover:bg-rose-500"
+                >
+                  Review {counts.tossed} tosses
+                </button>
+              )}
+              <button
+                onClick={() => loadData(true)}
+                className="rounded-full bg-neutral-700 px-5 py-2 text-neutral-100 hover:bg-neutral-600"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {reviewing && (
+        <CommitReview
+          items={tossedCards}
+          onCancel={() => setReviewing(false)}
+          onConfirm={handleConfirmCommit}
+        />
+      )}
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <div className="mx-auto flex h-full max-w-md flex-col bg-neutral-950 text-neutral-100">
+      {children}
+    </div>
+  );
+}
+
+function Centered({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full items-center justify-center bg-neutral-950 text-neutral-100">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold">Liked Songs Swiper</h1>
-        <p className="mt-2 text-neutral-400">Scaffold ready.</p>
-      </div>
+      {children}
+    </div>
+  );
+}
+
+function Spinner({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-neutral-700 border-t-emerald-500" />
+      <p className="text-sm text-neutral-400">{label}</p>
     </div>
   );
 }

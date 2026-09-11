@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { App } from "./App.tsx";
 
-test("renders the app title", () => {
+test("shows the login screen when not authenticated", async () => {
   render(<App />);
-  expect(screen.getByText("Liked Songs Swiper")).toBeInTheDocument();
+  expect(await screen.findByText("Liked Songs Swiper")).toBeInTheDocument();
 });
