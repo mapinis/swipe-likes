@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MOCK } from "../config.ts";
-import { hasScope } from "../auth/session.ts";
+import { MOCK, PLAYBACK_SCOPES } from "../config.ts";
+import { hasScopes } from "../auth/session.ts";
 import type { Track } from "../api/types.ts";
 import { pausePlayback, playSnippet } from "./webPlayback.ts";
 
@@ -26,7 +26,7 @@ export function usePlayer(current: Track | null) {
   const stopTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const needsReconnect = !MOCK && !hasScope("streaming");
+  const needsReconnect = !MOCK && !hasScopes(PLAYBACK_SCOPES);
 
   const clearTimers = () => {
     if (stopTimer.current) clearTimeout(stopTimer.current);

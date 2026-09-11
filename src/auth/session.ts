@@ -56,9 +56,14 @@ export function isLoggedIn(): boolean {
   return loadTokens() !== null;
 }
 
-export function hasScope(scope: string): boolean {
+export function scopeStringHasAll(scope: string, required: string[]): boolean {
+  const granted = new Set(scope.split(" ").filter(Boolean));
+  return required.every((s) => granted.has(s));
+}
+
+export function hasScopes(required: string[]): boolean {
   const tokens = loadTokens();
-  return tokens ? tokens.scope.split(" ").includes(scope) : false;
+  return tokens ? scopeStringHasAll(tokens.scope, required) : false;
 }
 
 function toTokenSet(res: TokenResponse, previous?: TokenSet | null): TokenSet {
