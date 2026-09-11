@@ -150,7 +150,7 @@ export function App() {
 
   return (
     <Shell>
-      <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+      <header className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 md:px-6">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-neutral-100">
             {snapshot?.user.display_name ?? "You"}
@@ -160,6 +160,9 @@ export function App() {
             {counts.remaining} left · {counts.tossed} tossed
             {counts.skipped > 0 && ` · ${counts.skipped} skipped`} · {counts.committed} removed
           </p>
+        </div>
+        <div className="hidden items-center gap-4 text-xs md:flex">
+          <PlaybackControls player={player} />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -185,31 +188,11 @@ export function App() {
         </div>
       </header>
 
-      <div className="flex items-center justify-between gap-2 border-b border-white/5 px-4 py-2 text-xs">
-        <label className="flex cursor-pointer items-center gap-2 text-neutral-300">
-          <input
-            type="checkbox"
-            checked={player.autoPlay}
-            onChange={(e) => player.setAutoPlay(e.target.checked)}
-            className="h-4 w-4 accent-emerald-500"
-          />
-          Auto-play preview
-        </label>
-        {player.needsReconnect ? (
-          <button
-            onClick={() => void beginLogin().catch(() => {})}
-            className="text-amber-400 underline decoration-dotted"
-          >
-            Reconnect to enable previews
-          </button>
-        ) : player.error ? (
-          <span className="truncate text-rose-400">{player.error}</span>
-        ) : (
-          <span className="text-neutral-600">plays ~15s from the hook</span>
-        )}
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 px-4 py-2 text-xs md:hidden">
+        <PlaybackControls player={player} />
       </div>
 
-      <main className="flex flex-1 items-center justify-center px-4 py-6">
+      <main className="flex flex-1 items-center justify-center px-4 py-6 md:py-10">
         {current ? (
           <SwipeDeck
             current={current}
@@ -264,9 +247,37 @@ export function App() {
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto flex h-full max-w-md flex-col bg-neutral-950 text-neutral-100">
+    <div className="mx-auto flex h-full w-full max-w-md flex-col bg-neutral-950 text-neutral-100 md:max-w-none">
       {children}
     </div>
+  );
+}
+
+function PlaybackControls({ player }: { player: ReturnType<typeof usePlayer> }) {
+  return (
+    <>
+      <label className="flex cursor-pointer items-center gap-2 text-neutral-300">
+        <input
+          type="checkbox"
+          checked={player.autoPlay}
+          onChange={(e) => player.setAutoPlay(e.target.checked)}
+          className="h-4 w-4 accent-emerald-500"
+        />
+        Auto-play preview
+      </label>
+      {player.needsReconnect ? (
+        <button
+          onClick={() => void beginLogin().catch(() => {})}
+          className="text-amber-400 underline decoration-dotted"
+        >
+          Reconnect to enable previews
+        </button>
+      ) : player.error ? (
+        <span className="truncate text-rose-400">{player.error}</span>
+      ) : (
+        <span className="text-neutral-600">plays ~15s from the hook</span>
+      )}
+    </>
   );
 }
 

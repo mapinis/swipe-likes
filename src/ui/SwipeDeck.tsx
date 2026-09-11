@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
-  AnimatePresence,
+  animate,
   motion,
   useMotionValue,
   useTransform,
@@ -10,57 +10,8 @@ import type { ScoredTrack } from "../scoring/score.ts";
 import type { Decision } from "../deck/deck.ts";
 import { Card, type CardPlayback } from "./Card.tsx";
 
-const FLING_THRESHOLD = 110;
-
-function DraggableCard({
-  card,
-  dir,
-  onFling,
-  playback,
-}: {
-  card: ScoredTrack;
-  dir: number;
-  onFling: (decision: Decision) => void;
-  playback?: CardPlayback;
-}) {
-  const x = useMotionValue(0);
-  const rotate = useTransform(x, [-240, 240], [-16, 16]);
-  const keepOpacity = useTransform(x, [20, 130], [0, 1]);
-  const tossOpacity = useTransform(x, [-20, -130], [0, 1]);
-
-  function handleDragEnd(_e: unknown, info: PanInfo) {
-    if (info.offset.x > FLING_THRESHOLD) onFling("keep");
-    else if (info.offset.x < -FLING_THRESHOLD) onFling("toss");
-  }
-
-  return (
-    <motion.div
-      className="absolute inset-0 cursor-grab active:cursor-grabbing"
-      style={{ x, rotate }}
-      drag="x"
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.7}
-      onDragEnd={handleDragEnd}
-      initial={{ scale: 0.96, opacity: 0.6 }}
-      animate={{ scale: 1, opacity: 1 }}
-      exit={{ x: dir * 700, opacity: 0, transition: { duration: 0.25 } }}
-    >
-      <motion.div
-        style={{ opacity: keepOpacity }}
-        className="pointer-events-none absolute left-5 top-5 z-10 -rotate-12 rounded-lg border-4 border-emerald-400 px-3 py-1 text-2xl font-extrabold text-emerald-400"
-      >
-        KEEP
-      </motion.div>
-      <motion.div
-        style={{ opacity: tossOpacity }}
-        className="pointer-events-none absolute right-5 top-5 z-10 rotate-12 rounded-lg border-4 border-rose-500 px-3 py-1 text-2xl font-extrabold text-rose-500"
-      >
-        TOSS
-      </motion.div>
-      <Card card={card} playback={playback} />
-    </motion.div>
-  );
-}
+const FLING_THRESHOLD = 100;
+const FLING_VELOCITY = 500;
 
 export function SwipeDeck({
   current,
@@ -79,62 +30,101 @@ export function SwipeDeck({
   onUndo: () => void;
   playback?: CardPlayback;
 }) {
-  const dirRef = useRef(0);
-  const [, force] = useState(0);
+  const x = useMotionValue(0);
+  const rotate = useTransform(x, [-300, 300], [-15, 15]);
+  const keepOpacity = useTransform(x, [30, 130], [0, 1]);
+  const tossOpacity = useTransform(x, [-30, -130], [0, 1]);
+  const [busy, setBusy] = useState(false);
 
-  function fling(decision: Decision) {
-    dirRef.current = decision === "keep" ? 1 : -1;
-    force((n) => n + 1);
-    onSwipe(current.saved.track.id, decision);
-  }
+  const swipe = useCallback(
+    async (decision: Decision) => {
+      if (busy) return;
+      setBusy(true);
+      const dir = decision === "keep" ? 1 : -1;
+      const distance = (typeof window !== "undefined" ? window.innerWidth : 600) * 1.15;
+      await animate(x, dir * distance, { duration: 0.28, ease: "easeIn" }).finished;
+      onSwipe(current.saved.track.id, decision);
+      x.set(0); // reset for the incoming card before it paints
+      setBusy(false);
+    },
+    [busy, current, onSwipe, x],
+  );
 
-  function skip() {
-    dirRef.current = 0;
+  const skip = useCallback(() => {
+    if (busy) return;
     onSkip(current.saved.track.id);
+    x.set(0);
+  }, [busy, current, onSkip, x]);
+
+  function handleDragEnd(_e: unknown, info: PanInfo) {
+    if (info.offset.x > FLING_THRESHOLD || info.velocity.x > FLING_VELOCITY) {
+      void swipe("keep");
+    } else if (info.offset.x < -FLING_THRESHOLD || info.velocity.x < -FLING_VELOCITY) {
+      void swipe("toss");
+    } else {
+      animate(x, 0, { type: "spring", stiffness: 300, damping: 30 });
+    }
   }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "ArrowRight") fling("keep");
-      else if (e.key === "ArrowLeft") fling("toss");
-      else if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") skip();
+      if (e.key === "ArrowRight") void swipe("keep");
+      else if (e.key === "ArrowLeft") void swipe("toss");
+      else if (e.key === "ArrowDown" || e.key.toLowerCase() === "s") void skip();
       else if (e.key.toLowerCase() === "z" && canUndo) onUndo();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, canUndo]);
+  }, [swipe, skip, canUndo, onUndo]);
 
   return (
-    <div className="flex w-full max-w-sm flex-col items-center gap-5">
-      <div className="relative aspect-[3/4.3] w-full">
+    <div className="flex w-full max-w-sm flex-col items-center gap-6 md:h-full md:max-w-none md:justify-center">
+      <div className="relative aspect-[3/4.3] w-full md:h-[70vh] md:max-h-[680px] md:w-auto">
         {upcoming.map((c, i) => (
           <div
             key={c.saved.track.id}
-            className="absolute inset-0"
+            className="pointer-events-none absolute inset-0"
             style={{
-              transform: `scale(${0.96 - i * 0.03}) translateY(${(i + 1) * 10}px)`,
-              zIndex: -i - 1,
-              opacity: 0.5,
+              transform: `scale(${0.96 - i * 0.03}) translateY(${(i + 1) * 12}px)`,
+              zIndex: 0,
+              opacity: 0.55,
             }}
           >
             <Card card={c} />
           </div>
         ))}
-        <AnimatePresence initial={false}>
-          <DraggableCard
-            key={current.saved.track.id}
-            card={current}
-            dir={dirRef.current}
-            onFling={fling}
-            playback={playback}
-          />
-        </AnimatePresence>
+
+        <motion.div
+          key={current.saved.track.id}
+          className="absolute inset-0 z-10 cursor-grab active:cursor-grabbing"
+          style={{ x, rotate }}
+          drag={busy ? false : "x"}
+          dragConstraints={{ left: 0, right: 0 }}
+          dragElastic={0.9}
+          onDragEnd={handleDragEnd}
+          initial={{ scale: 0.94, opacity: 0.4 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 320, damping: 30 }}
+        >
+          <motion.div
+            style={{ opacity: keepOpacity }}
+            className="pointer-events-none absolute left-5 top-5 z-10 -rotate-12 rounded-lg border-4 border-emerald-400 px-3 py-1 text-2xl font-extrabold text-emerald-400"
+          >
+            KEEP
+          </motion.div>
+          <motion.div
+            style={{ opacity: tossOpacity }}
+            className="pointer-events-none absolute right-5 top-5 z-10 rotate-12 rounded-lg border-4 border-rose-500 px-3 py-1 text-2xl font-extrabold text-rose-500"
+          >
+            TOSS
+          </motion.div>
+          <Card card={current} playback={playback} />
+        </motion.div>
       </div>
 
       <div className="flex items-center gap-3">
         <button
-          onClick={() => fling("toss")}
+          onClick={() => void swipe("toss")}
           aria-label="Toss"
           className="flex h-16 w-16 items-center justify-center rounded-full bg-rose-600 text-2xl text-white shadow-lg transition hover:scale-105 hover:bg-rose-500"
         >
@@ -149,7 +139,7 @@ export function SwipeDeck({
           ↩
         </button>
         <button
-          onClick={skip}
+          onClick={() => void skip()}
           aria-label="Skip for now"
           title="Skip for now — see it again later"
           className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-700 text-lg text-white shadow-lg transition hover:scale-105 hover:bg-neutral-600"
@@ -157,7 +147,7 @@ export function SwipeDeck({
           ⤼
         </button>
         <button
-          onClick={() => fling("keep")}
+          onClick={() => void swipe("keep")}
           aria-label="Keep"
           className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500 text-2xl text-white shadow-lg transition hover:scale-105 hover:bg-emerald-400"
         >
@@ -165,7 +155,7 @@ export function SwipeDeck({
         </button>
       </div>
       <p className="text-xs text-neutral-500">
-        ← toss · → keep · ↓ skip · Z undo
+        Drag or ← toss · → keep · ↓ skip · Z undo
       </p>
     </div>
   );
