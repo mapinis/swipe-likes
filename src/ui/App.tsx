@@ -238,7 +238,7 @@ export function App() {
           <button
             onClick={() => loadData(true)}
             title="Refresh data"
-            className="rounded-full bg-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-700"
+            className="rounded-full bg-neutral-800 px-3 py-1 text-xl text-neutral-300 hover:bg-neutral-700"
           >
             ⟳
           </button>

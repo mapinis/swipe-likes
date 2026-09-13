@@ -206,7 +206,7 @@ export function SwipeDeck({
           onClick={() => void skip()}
           aria-label="Skip for now"
           title="Skip for now — see it again later"
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-700 text-lg text-white shadow-lg transition hover:scale-105 hover:bg-neutral-600"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-neutral-700 text-4xl text-white shadow-lg transition hover:scale-105 hover:bg-neutral-600"
         >
           ⤼
         </button>
