@@ -13,7 +13,8 @@ import { Card, type CardPlayback } from "./Card.tsx";
 const FLING_THRESHOLD = 100;
 const FLING_VELOCITY = 500;
 const SCROLL_CLAMP = 240; // how far the card tracks a scroll gesture
-const SCROLL_END_MS = 130; // idle gap that marks the end of a scroll gesture
+const SCROLL_END_MS = 130; // idle gap that snaps a below-threshold scroll back
+const SCROLL_REST_MS = 160; // idle gap that ends the momentum tail after a commit
 
 export function SwipeDeck({
   current,
@@ -39,7 +40,6 @@ export function SwipeDeck({
   const keepOpacity = useTransform(x, [30, 130], [0, 1]);
   const tossOpacity = useTransform(x, [-30, -130], [0, 1]);
   const [busy, setBusy] = useState(false);
-  const cooldownUntil = useRef(0);
 
   const swipe = useCallback(
     async (decision: Decision) => {
@@ -50,8 +50,6 @@ export function SwipeDeck({
       await animate(x, dir * distance, { duration: 0.28, ease: "easeIn" }).finished;
       onSwipe(current.saved.track.id, decision);
       x.set(0); // reset for the incoming card before it paints
-      // Absorb trackpad momentum so one gesture can't skip a second card.
-      cooldownUntil.current = Date.now() + 300;
       setBusy(false);
     },
     [busy, current, onSwipe, x],
@@ -63,36 +61,58 @@ export function SwipeDeck({
     x.set(0);
   }, [busy, current, onSkip, x]);
 
-  // Two-finger horizontal scroll (trackpad) → swipe. A wheel gesture has no
-  // "end" event, so commit after a short idle gap. preventDefault stops the
-  // browser's back/forward swipe navigation.
+  // Two-finger horizontal scroll (trackpad) → swipe. Commit the instant the
+  // scroll passes the threshold (trackpad inertia keeps firing wheel events for
+  // ~1-2s after you lift your fingers, so waiting for the gesture to "end" would
+  // leave the card stuck mid-swipe until the momentum died). preventDefault
+  // stops the browser's back/forward swipe navigation.
   const cardAreaRef = useRef<HTMLDivElement>(null);
   const scrollEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const momentumLock = useRef(false);
   useEffect(() => {
     const el = cardAreaRef.current;
     if (!el) return;
+    const holdMomentum = () => {
+      momentumLock.current = true;
+      if (restTimer.current) clearTimeout(restTimer.current);
+      restTimer.current = setTimeout(() => {
+        momentumLock.current = false;
+      }, SCROLL_REST_MS);
+    };
     function onWheel(e: WheelEvent) {
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // ignore vertical
       e.preventDefault();
-      if (busy || Date.now() < cooldownUntil.current) return;
+      // Absorb the inertia tail after a commit (or during a fly-out) until the
+      // scroll actually pauses — otherwise momentum would swipe the next card too.
+      if (busy || momentumLock.current) {
+        holdMomentum();
+        return;
+      }
       // Default follows the finger under macOS "natural scrolling" (the common
       // default). The invert toggle flips it for the other setting; JS can't
       // detect the OS preference, so it has to be user-selectable.
       const delta = e.deltaX * (scrollInvert ? -1 : 1);
       const next = Math.max(-SCROLL_CLAMP, Math.min(SCROLL_CLAMP, x.get() - delta));
       x.set(next);
+
+      if (next >= FLING_THRESHOLD || next <= -FLING_THRESHOLD) {
+        if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
+        holdMomentum();
+        void swipe(next > 0 ? "keep" : "toss");
+        return;
+      }
+      // Below threshold: snap back if the scroll stops here.
       if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
       scrollEndTimer.current = setTimeout(() => {
-        const v = x.get();
-        if (v > FLING_THRESHOLD) void swipe("keep");
-        else if (v < -FLING_THRESHOLD) void swipe("toss");
-        else animate(x, 0, { type: "spring", stiffness: 300, damping: 30 });
+        animate(x, 0, { type: "spring", stiffness: 300, damping: 30 });
       }, SCROLL_END_MS);
     }
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       el.removeEventListener("wheel", onWheel);
       if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
+      if (restTimer.current) clearTimeout(restTimer.current);
     };
   }, [busy, swipe, x, scrollInvert]);
 
