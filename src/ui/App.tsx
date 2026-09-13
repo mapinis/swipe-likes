@@ -138,10 +138,13 @@ export function App() {
     };
   }, [currentTrack, player]);
 
+  // Only materialize the tossed list when the review sheet is open — no need to
+  // scan the library on every swipe.
   const tossedCards = useMemo(() => {
+    if (!reviewing) return [];
     const ids = new Set(deck.tossedIds);
     return scored.filter((s) => ids.has(s.saved.track.id));
-  }, [scored, deck.tossedIds]);
+  }, [reviewing, scored, deck.tossedIds]);
 
   const handleConfirmCommit = useCallback(async () => {
     if (!snapshot) return;

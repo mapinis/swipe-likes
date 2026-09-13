@@ -3,8 +3,6 @@ import type { ScoredTrack } from "../scoring/score.ts";
 import {
   canUndo,
   commitTossed,
-  counts,
-  currentCard,
   decide,
   emptyDeck,
   pendingDeck,
@@ -77,12 +75,26 @@ export function useDeck(scored: ScoredTrack[]) {
   const applyCommit = useCallback(() => setState((s) => commitTossed(s)), []);
   const reset = useCallback(() => setState(emptyDeck), []);
 
-  const current = useMemo(() => currentCard(scored, state), [scored, state]);
-  const upcoming = useMemo(
-    () => pendingDeck(scored, state).slice(1, 4),
-    [scored, state],
-  );
-  const deckCounts = useMemo(() => counts(scored, state), [scored, state]);
+  // Filter the pending deck once per change; derive everything else from it
+  // (avoids re-scanning the whole library several times on each swipe).
+  const pending = useMemo(() => pendingDeck(scored, state), [scored, state]);
+  const current = pending[0] ?? null;
+  const upcoming = useMemo(() => pending.slice(1, 4), [pending]);
+  const deckCounts = useMemo(() => {
+    let tossedCount = 0;
+    let kept = 0;
+    for (const d of Object.values(state.decisions)) {
+      if (d === "toss") tossedCount++;
+      else kept++;
+    }
+    return {
+      remaining: pending.length,
+      tossed: tossedCount,
+      kept,
+      skipped: state.skipped.length,
+      committed: state.committed.length,
+    };
+  }, [pending, state]);
   const tossed = useMemo(() => tossedIds(state), [state]);
 
   return {
