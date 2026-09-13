@@ -15,8 +15,6 @@ export interface Snapshot {
   topArtistIds: { short: string[]; medium: string[]; long: string[] };
   recentlyPlayedTrackIds: string[];
   recentlyPlayedArtistIds: string[];
-  activeGenres: string[];
-  artistGenres: [string, string[]][];
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
@@ -63,7 +61,5 @@ export function toScoringInput(snap: Snapshot): ScoringInput {
     },
     recentlyPlayedTrackIds: new Set(snap.recentlyPlayedTrackIds),
     recentlyPlayedArtistIds: new Set(snap.recentlyPlayedArtistIds),
-    activeGenres: new Set(snap.activeGenres),
-    artistGenres: new Map(snap.artistGenres),
   };
 }

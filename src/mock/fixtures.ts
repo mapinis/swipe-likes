@@ -58,9 +58,6 @@ export function mockSnapshot(now = Date.now()): Snapshot {
   const topShortArtists = ["m83", "arctic", "kanye", "childish"];
   const topMedArtists = [...topShortArtists, "nbhd", "mgmt"];
 
-  const artistGenres = new Map<string, string[]>();
-  for (const s of SEEDS) artistGenres.set(s.artistId, s.genres);
-
   return {
     fetchedAt: now,
     user: { id: "mockuser", display_name: "Mock Listener", product: "premium" },
@@ -77,7 +74,5 @@ export function mockSnapshot(now = Date.now()): Snapshot {
     },
     recentlyPlayedTrackIds: ["t1", "t19", "t15"],
     recentlyPlayedArtistIds: ["m83", "arctic", "kanye"],
-    activeGenres: ["indietronica", "garage rock", "hip hop", "indie pop"],
-    artistGenres: [...artistGenres.entries()],
   };
 }

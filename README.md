@@ -12,17 +12,25 @@ Spotify's Authorization Code + PKCE flow.
 ## How the toss score works
 
 Spotify's API no longer exposes audio/mood features or per-track play counts, so
-the score is built from the signals that *are* available:
+the score is built from the signals that *are* available. **Toss pressure** comes
+from signals that vary across your whole library:
 
 - **Stale like** — how long ago you liked it (`added_at`).
-- **Not a top track** — absent from your top tracks (4 weeks / 6 months / 1 year).
-- **Artist not in your top artists** — you've drifted from the artist.
-- **Not played recently** — missing from your recently-played history.
-- **Genre drift** — the artist's genres are outside your current active genres.
-- **Artist abandonment** — few/old likes from this artist in your library.
+- **Artist cold** — how long since you last liked *anything* by that artist
+  (from your full library, not just the top-50).
+- **Artist thin** — few liked songs by that artist ⇒ more likely clutter.
 
-Weights live in [`src/scoring/weights.ts`](src/scoring/weights.ts) and are easy
-to tune. Each card shows the top reasons behind its score.
+**Keep overrides** only *lower* the score (their absence is neutral, never extra
+toss — this is what stops a diverse library from collapsing to a wall of 100s):
+
+- **Top track / top artist** — still in your 4-week / 6-month / 1-year tops.
+- **Recently played** — the track or artist is in your recent plays.
+
+The displayed 0–100 is a **percentile across your library**, so the deck always
+spans the full range and 100 means "most tossable *for you*." Weights and horizons
+live in [`src/scoring/weights.ts`](src/scoring/weights.ts); the in-app **⚙ Scoring
+tuner** lets you adjust them with a live raw-score histogram, and your choices are
+saved. Each card shows the top reasons behind its score.
 
 ## One-time Spotify setup
 

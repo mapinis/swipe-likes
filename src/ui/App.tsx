@@ -8,13 +8,33 @@ import {
 } from "../auth/session.ts";
 import { client, getSnapshot } from "../data/source.ts";
 import { toScoringInput, type Snapshot } from "../data/cache.ts";
-import { scoreLibrary, type ScoredTrack } from "../scoring/score.ts";
+import { scoreLibrary } from "../scoring/score.ts";
+import { DEFAULT_CONFIG, type ScoringConfig } from "../scoring/weights.ts";
 import { commitToss } from "../deck/commit.ts";
 import { useDeck } from "../deck/useDeck.ts";
 import { usePlayer } from "../player/usePlayer.ts";
 import { SwipeDeck } from "./SwipeDeck.tsx";
 import { CommitReview } from "./CommitReview.tsx";
+import { TuningPanel } from "./TuningPanel.tsx";
 import { Login } from "./Login.tsx";
+
+const CONFIG_KEY = "sp.scoreConfig";
+
+function loadConfig(): ScoringConfig {
+  try {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as ScoringConfig;
+      return {
+        weights: { ...DEFAULT_CONFIG.weights, ...parsed.weights },
+        horizons: { ...DEFAULT_CONFIG.horizons, ...parsed.horizons },
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return DEFAULT_CONFIG;
+}
 
 type Phase = "init" | "login" | "loading" | "error" | "ready";
 
@@ -23,8 +43,23 @@ export function App() {
   const [loadingMsg, setLoadingMsg] = useState("Loading…");
   const [errorMsg, setErrorMsg] = useState("");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [scored, setScored] = useState<ScoredTrack[]>([]);
   const [reviewing, setReviewing] = useState(false);
+  const [tuning, setTuning] = useState(false);
+  const [config, setConfig] = useState<ScoringConfig>(loadConfig);
+
+  const updateConfig = useCallback((c: ScoringConfig) => {
+    setConfig(c);
+    try {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(c));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const scored = useMemo(
+    () => (snapshot ? scoreLibrary(toScoringInput(snapshot), config) : []),
+    [snapshot, config],
+  );
 
   const loadData = useCallback(async (force = false) => {
     setPhase("loading");
@@ -42,7 +77,6 @@ export function App() {
           ),
       });
       setSnapshot(snap);
-      setScored(scoreLibrary(toScoringInput(snap)));
       setPhase("ready");
     } catch (e) {
       setErrorMsg((e as Error).message);
@@ -129,7 +163,6 @@ export function App() {
     logout();
     deck.reset();
     setSnapshot(null);
-    setScored([]);
     setPhase("login");
   }
 
@@ -191,6 +224,13 @@ export function App() {
             className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition enabled:hover:bg-rose-500 disabled:opacity-40"
           >
             Review {counts.tossed > 0 ? counts.tossed : ""} ⟶
+          </button>
+          <button
+            onClick={() => setTuning(true)}
+            title="Scoring tuner"
+            className="rounded-full bg-neutral-800 px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-700"
+          >
+            ⚙
           </button>
           <button
             onClick={() => loadData(true)}
@@ -264,6 +304,16 @@ export function App() {
           items={tossedCards}
           onCancel={() => setReviewing(false)}
           onConfirm={handleConfirmCommit}
+        />
+      )}
+
+      {tuning && (
+        <TuningPanel
+          config={config}
+          raws={scored.map((s) => s.raw)}
+          onChange={updateConfig}
+          onReset={() => updateConfig(DEFAULT_CONFIG)}
+          onClose={() => setTuning(false)}
         />
       )}
     </Shell>

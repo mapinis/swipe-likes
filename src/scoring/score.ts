@@ -1,10 +1,11 @@
 import type { SavedTrack } from "../api/types.ts";
 import {
-  RECENT_ARTIST_LIKE_DAYS,
-  STALE_MAX_DAYS,
-  WEIGHTS,
-  type FactorName,
-  type FactorWeights,
+  DEFAULT_CONFIG,
+  RECENT_ARTIST_KEEP,
+  RECENT_TRACK_KEEP,
+  TOP_TIER_KEEP,
+  type ScoringConfig,
+  type ScoringWeights,
 } from "./weights.ts";
 
 const DAY_MS = 86_400_000;
@@ -21,9 +22,24 @@ export interface ScoringInput {
   topArtistIds: TermSets;
   recentlyPlayedTrackIds: Set<string>;
   recentlyPlayedArtistIds: Set<string>;
-  activeGenres: Set<string>;
-  artistGenres: Map<string, string[]>;
   now?: number;
+}
+
+export interface ScoreFactors {
+  age: number;
+  artistCold: number;
+  artistThin: number;
+  topTrackKeep: number;
+  topArtistKeep: number;
+  recentKeep: number;
+}
+
+export interface ScoredTrack {
+  saved: SavedTrack;
+  score: number; // 0..100 percentile across the library, higher = toss first
+  raw: number; // pre-percentile toss pressure (can be negative)
+  factors: ScoreFactors;
+  reasons: string[];
 }
 
 interface ArtistAgg {
@@ -31,26 +47,15 @@ interface ArtistAgg {
   lastLikedAt: number;
 }
 
-export interface ScoredTrack {
-  saved: SavedTrack;
-  score: number; // 0..100, higher = toss first
-  factors: Partial<Record<FactorName, number>>; // available factors, 0..1
-  reasons: string[];
-}
-
 function clamp01(n: number): number {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
 
-function termScore(
-  id: string,
-  sets: TermSets,
-  others: () => boolean,
-): number {
-  if (sets.short.has(id)) return 0;
-  if (sets.medium.has(id)) return 0.2;
-  if (sets.long.has(id)) return 0.4;
-  return others() ? 0.4 : 1;
+function termKeep(id: string, sets: TermSets): number {
+  if (sets.short.has(id)) return TOP_TIER_KEEP.short;
+  if (sets.medium.has(id)) return TOP_TIER_KEEP.medium;
+  if (sets.long.has(id)) return TOP_TIER_KEEP.long;
+  return 0;
 }
 
 function buildArtistAggregates(saved: SavedTrack[]): Map<string, ArtistAgg> {
@@ -70,145 +75,129 @@ function buildArtistAggregates(saved: SavedTrack[]): Map<string, ArtistAgg> {
   return map;
 }
 
-function ageDays(addedAt: string, now: number): number {
-  return Math.max(0, (now - Date.parse(addedAt)) / DAY_MS);
-}
-
-interface FactorResult {
-  factors: Partial<Record<FactorName, number>>;
-}
-
 function computeFactors(
   input: ScoringInput,
   saved: SavedTrack,
-  artistAgg: Map<string, ArtistAgg>,
+  agg: Map<string, ArtistAgg>,
+  config: ScoringConfig,
   now: number,
-): FactorResult {
+): ScoreFactors {
   const t = saved.track;
   const artistIds = t.artists.map((a) => a.id);
-  const factors: Partial<Record<FactorName, number>> = {};
+  const { horizons } = config;
 
-  // Stale like — older is more tossable.
-  factors.staleLike = clamp01(ageDays(saved.added_at, now) / STALE_MAX_DAYS);
+  const ageDays = Math.max(0, (now - Date.parse(saved.added_at)) / DAY_MS);
 
-  // Not a top track.
-  factors.notTopTrack = termScore(t.id, input.topTrackIds, () => false);
+  const artistStats = artistIds
+    .map((id) => agg.get(id))
+    .filter(Boolean) as ArtistAgg[];
+  const lastLikedAt = artistStats.length
+    ? Math.max(...artistStats.map((a) => a.lastLikedAt))
+    : Date.parse(saved.added_at);
+  const coldDays = Math.max(0, (now - lastLikedAt) / DAY_MS);
+  const artistCount = artistStats.length
+    ? Math.max(...artistStats.map((a) => a.count))
+    : 1;
 
-  // Artist not among top artists (any credited artist counts).
-  factors.artistNotTop = Math.min(
-    ...artistIds.map((id) => termScore(id, input.topArtistIds, () => false)),
-  );
+  const topArtistKeep = artistIds.length
+    ? Math.max(...artistIds.map((id) => termKeep(id, input.topArtistIds)))
+    : 0;
+  const recentKeep = input.recentlyPlayedTrackIds.has(t.id)
+    ? RECENT_TRACK_KEEP
+    : artistIds.some((id) => input.recentlyPlayedArtistIds.has(id))
+      ? RECENT_ARTIST_KEEP
+      : 0;
 
-  // Not played recently.
-  if (input.recentlyPlayedTrackIds.has(t.id)) {
-    factors.notRecentlyPlayed = 0;
-  } else if (artistIds.some((id) => input.recentlyPlayedArtistIds.has(id))) {
-    factors.notRecentlyPlayed = 0.5;
-  } else {
-    factors.notRecentlyPlayed = 1;
-  }
-
-  // Genre drift — only if we have genre data for the artist and a genre profile.
-  const genres = artistIds.flatMap((id) => input.artistGenres.get(id) ?? []);
-  if (input.activeGenres.size > 0 && genres.length > 0) {
-    const overlap = genres.some((g) => input.activeGenres.has(g));
-    factors.genreDrift = overlap ? 0 : 1;
-  }
-
-  // Artist abandonment — derived from the library's own like history.
-  const aggs = artistIds.map((id) => artistAgg.get(id)).filter(Boolean) as ArtistAgg[];
-  const recentArtistLike = aggs.some(
-    (a) => (now - a.lastLikedAt) / DAY_MS <= RECENT_ARTIST_LIKE_DAYS,
-  );
-  const maxCount = aggs.length ? Math.max(...aggs.map((a) => a.count)) : 1;
-  if (recentArtistLike) {
-    factors.artistAbandonment = 0.1;
-  } else if (maxCount >= 8) {
-    factors.artistAbandonment = 0.3;
-  } else if (maxCount >= 3) {
-    factors.artistAbandonment = 0.6;
-  } else {
-    factors.artistAbandonment = 1;
-  }
-
-  return { factors };
+  return {
+    age: clamp01(ageDays / horizons.ageDays),
+    artistCold: clamp01(coldDays / horizons.artistColdDays),
+    artistThin: 1 - clamp01(artistCount / horizons.artistCountSat),
+    topTrackKeep: termKeep(t.id, input.topTrackIds),
+    topArtistKeep,
+    recentKeep,
+  };
 }
 
-export function combineScore(
-  factors: Partial<Record<FactorName, number>>,
-  weights: FactorWeights = WEIGHTS,
-): number {
-  let weighted = 0;
-  let totalWeight = 0;
-  for (const name of Object.keys(weights) as FactorName[]) {
-    const v = factors[name];
-    if (v === undefined) continue;
-    weighted += v * weights[name];
-    totalWeight += weights[name];
-  }
-  if (totalWeight === 0) return 0;
-  return Math.round((weighted / totalWeight) * 100);
+export function rawScore(f: ScoreFactors, w: ScoringWeights): number {
+  return (
+    w.age * f.age +
+    w.artistCold * f.artistCold +
+    w.artistThin * f.artistThin -
+    w.topTrack * f.topTrackKeep -
+    w.topArtist * f.topArtistKeep -
+    w.recentPlay * f.recentKeep
+  );
 }
 
 function humanAge(days: number): string {
-  if (days >= 365) {
-    const y = Math.round(days / 365);
-    return `${y}y ago`;
-  }
-  const m = Math.max(1, Math.round(days / 30));
-  return `${m}mo ago`;
+  if (days >= 365) return `${Math.round(days / 365)}y ago`;
+  return `${Math.max(1, Math.round(days / 30))}mo ago`;
 }
 
 function buildReasons(
   saved: SavedTrack,
-  factors: Partial<Record<FactorName, number>>,
+  f: ScoreFactors,
+  w: ScoringWeights,
   now: number,
-  weights: FactorWeights,
+  artistCount: number,
 ): string[] {
-  const artistName = saved.track.artists[0]?.name ?? "this artist";
-  const phrase: Partial<Record<FactorName, string>> = {
-    staleLike: `Liked ${humanAge(ageDays(saved.added_at, now))}`,
-    notTopTrack: "Not one of your top tracks",
-    artistNotTop: `You rarely play ${artistName}`,
-    notRecentlyPlayed: "Not played recently",
-    genreDrift: "Off your current genres",
-    artistAbandonment: `Few recent likes from ${artistName}`,
-  };
-  return (Object.keys(weights) as FactorName[])
-    .map((name) => ({
-      name,
-      contribution: (factors[name] ?? 0) * weights[name],
-      value: factors[name] ?? 0,
-    }))
-    .filter((f) => f.value >= 0.5 && f.contribution > 0)
-    .sort((a, b) => b.contribution - a.contribution)
+  const artist = saved.track.artists[0]?.name ?? "this artist";
+  const ageDays = Math.max(0, (now - Date.parse(saved.added_at)) / DAY_MS);
+
+  const toss: Array<{ weight: number; text: string }> = [];
+  if (w.age * f.age > 0.1) toss.push({ weight: w.age * f.age, text: `Liked ${humanAge(ageDays)}` });
+  if (artistCount > 1 && w.artistCold * f.artistCold > 0.1)
+    toss.push({ weight: w.artistCold * f.artistCold, text: `Cooled on ${artist}` });
+  if (w.artistThin * f.artistThin > 0.1)
+    toss.push({
+      weight: w.artistThin * f.artistThin,
+      text: artistCount <= 1 ? `Only song you liked by ${artist}` : `Few songs by ${artist}`,
+    });
+
+  const reasons = toss
+    .sort((a, b) => b.weight - a.weight)
     .slice(0, 3)
-    .map((f) => phrase[f.name]!)
-    .filter(Boolean);
+    .map((r) => r.text);
+
+  if (reasons.length < 3) {
+    if (f.topTrackKeep > 0) reasons.push("One of your top tracks");
+    else if (f.topArtistKeep > 0) reasons.push(`You still play ${artist}`);
+    else if (f.recentKeep > 0) reasons.push("Played recently");
+  }
+  return reasons.slice(0, 3);
 }
 
 export function scoreLibrary(
   input: ScoringInput,
-  weights: FactorWeights = WEIGHTS,
+  config: ScoringConfig = DEFAULT_CONFIG,
 ): ScoredTrack[] {
   const now = input.now ?? Date.now();
-  const artistAgg = buildArtistAggregates(input.savedTracks);
+  const agg = buildArtistAggregates(input.savedTracks);
 
   const scored = input.savedTracks.map((saved) => {
-    const { factors } = computeFactors(input, saved, artistAgg, now);
-    const score = combineScore(factors, weights);
+    const factors = computeFactors(input, saved, agg, config, now);
+    const artistCount = Math.max(
+      1,
+      ...saved.track.artists.map((a) => agg.get(a.id)?.count ?? 1),
+    );
     return {
       saved,
-      score,
+      score: 0,
+      raw: rawScore(factors, config.weights),
       factors,
-      reasons: buildReasons(saved, factors, now, weights),
+      reasons: buildReasons(saved, factors, config.weights, now, artistCount),
     };
   });
 
   scored.sort(
     (a, b) =>
-      b.score - a.score ||
+      b.raw - a.raw ||
       Date.parse(a.saved.added_at) - Date.parse(b.saved.added_at),
   );
+
+  const n = scored.length;
+  scored.forEach((s, i) => {
+    s.score = n <= 1 ? 100 : Math.round(((n - 1 - i) / (n - 1)) * 100);
+  });
   return scored;
 }

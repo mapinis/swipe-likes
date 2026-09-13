@@ -1,13 +1,12 @@
 import type { SpotifyClient } from "../api/client.ts";
 import {
   getAllSavedTracks,
-  getArtists,
   getCurrentUser,
   getRecentlyPlayed,
   getTopArtists,
   getTopTracks,
 } from "../api/spotify.ts";
-import type { Artist, TimeRange } from "../api/types.ts";
+import type { TimeRange } from "../api/types.ts";
 import type { Snapshot } from "./cache.ts";
 
 export interface GatherProgress {
@@ -49,17 +48,6 @@ export async function gatherSnapshot(
     long: topArtists[2].map((a) => a.id),
   };
 
-  const artistGenres = new Map<string, string[]>();
-  const activeGenres = new Set<string>();
-  for (const list of topArtists) {
-    for (const a of list) {
-      if (a.genres) {
-        artistGenres.set(a.id, a.genres);
-        for (const g of a.genres) activeGenres.add(g);
-      }
-    }
-  }
-
   report({ phase: "Checking recent plays" });
   const recent = await getRecentlyPlayed(client);
   const recentlyPlayedTrackIds = new Set<string>();
@@ -69,9 +57,6 @@ export async function gatherSnapshot(
     for (const a of item.track.artists) recentlyPlayedArtistIds.add(a.id);
   }
 
-  report({ phase: "Fetching genres" });
-  await enrichGenres(client, savedTracks, artistGenres);
-
   return {
     fetchedAt: Date.now(),
     user,
@@ -80,28 +65,5 @@ export async function gatherSnapshot(
     topArtistIds,
     recentlyPlayedTrackIds: [...recentlyPlayedTrackIds],
     recentlyPlayedArtistIds: [...recentlyPlayedArtistIds],
-    activeGenres: [...activeGenres],
-    artistGenres: [...artistGenres.entries()],
   };
-}
-
-/** Best-effort genre lookup for saved-track artists we don't already know. */
-async function enrichGenres(
-  client: SpotifyClient,
-  savedTracks: Snapshot["savedTracks"],
-  artistGenres: Map<string, string[]>,
-): Promise<void> {
-  const missing = new Set<string>();
-  for (const s of savedTracks) {
-    for (const a of s.track.artists) {
-      if (!artistGenres.has(a.id)) missing.add(a.id);
-    }
-  }
-  if (missing.size === 0) return;
-  try {
-    const fetched: Artist[] = await getArtists(client, [...missing]);
-    for (const a of fetched) artistGenres.set(a.id, a.genres ?? []);
-  } catch {
-    // Genre endpoint may be restricted for this app — degrade gracefully.
-  }
 }

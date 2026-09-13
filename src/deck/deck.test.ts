@@ -13,7 +13,15 @@ import {
 function card(id: string, score: number): ScoredTrack {
   return {
     score,
-    factors: {},
+    raw: score / 100,
+    factors: {
+      age: 0,
+      artistCold: 0,
+      artistThin: 0,
+      topTrackKeep: 0,
+      topArtistKeep: 0,
+      recentKeep: 0,
+    },
     reasons: [],
     saved: {
       added_at: "2020-01-01T00:00:00Z",
