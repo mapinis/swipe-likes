@@ -23,6 +23,7 @@ export function SwipeDeck({
   onSkip,
   onUndo,
   playback,
+  scrollInvert = false,
 }: {
   current: ScoredTrack;
   upcoming: ScoredTrack[];
@@ -31,6 +32,7 @@ export function SwipeDeck({
   onSkip: (trackId: string) => void;
   onUndo: () => void;
   playback?: CardPlayback;
+  scrollInvert?: boolean;
 }) {
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-300, 300], [-15, 15]);
@@ -73,10 +75,11 @@ export function SwipeDeck({
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return; // ignore vertical
       e.preventDefault();
       if (busy || Date.now() < cooldownUntil.current) return;
-      const next = Math.max(
-        -SCROLL_CLAMP,
-        Math.min(SCROLL_CLAMP, x.get() + e.deltaX),
-      );
+      // Default follows the finger under macOS "natural scrolling" (the common
+      // default). The invert toggle flips it for the other setting; JS can't
+      // detect the OS preference, so it has to be user-selectable.
+      const delta = e.deltaX * (scrollInvert ? -1 : 1);
+      const next = Math.max(-SCROLL_CLAMP, Math.min(SCROLL_CLAMP, x.get() - delta));
       x.set(next);
       if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
       scrollEndTimer.current = setTimeout(() => {
@@ -91,7 +94,7 @@ export function SwipeDeck({
       el.removeEventListener("wheel", onWheel);
       if (scrollEndTimer.current) clearTimeout(scrollEndTimer.current);
     };
-  }, [busy, swipe, x]);
+  }, [busy, swipe, x, scrollInvert]);
 
   function handleDragEnd(_e: unknown, info: PanInfo) {
     if (info.offset.x > FLING_THRESHOLD || info.velocity.x > FLING_VELOCITY) {

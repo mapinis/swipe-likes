@@ -67,8 +67,11 @@ review without connecting an account.
 
 ## Using it
 
-- **Swipe / ← / ✕** to toss, **swipe / → / ♥** to keep, **↓ / ⤼** to skip,
-  **↩ / Z** to undo.
+- **Drag, two-finger scroll, ←, or ✕** to toss; **→ / ♥** (or scroll/drag right)
+  to keep; **↓ / ⤼** to skip; **↩ / Z** to undo.
+- If scroll-to-swipe feels backwards (depends on your OS "natural scrolling"
+  setting, which the browser can't detect), tick **Invert scroll** in the header
+  — the choice is remembered.
 - **Keep** and **toss** are remembered locally (they survive a reload).
   **Skip** is "see it again later" — it hides the card for now but the song
   comes back the next time you reload or refresh.

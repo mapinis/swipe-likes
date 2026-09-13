@@ -76,6 +76,22 @@ export function App() {
   const currentTrack = deck.current?.saved.track ?? null;
   const player = usePlayer(currentTrack);
 
+  const [scrollInvert, setScrollInvert] = useState(() => {
+    try {
+      return localStorage.getItem("sp.scrollInvert") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const updateScrollInvert = useCallback((on: boolean) => {
+    setScrollInvert(on);
+    try {
+      localStorage.setItem("sp.scrollInvert", on ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const playback = useMemo(() => {
     if (!currentTrack) return undefined;
     return {
@@ -162,7 +178,11 @@ export function App() {
           </p>
         </div>
         <div className="hidden items-center gap-4 text-xs md:flex">
-          <PlaybackControls player={player} />
+          <PlaybackControls
+            player={player}
+            scrollInvert={scrollInvert}
+            onScrollInvert={updateScrollInvert}
+          />
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -189,7 +209,11 @@ export function App() {
       </header>
 
       <div className="flex items-center justify-between gap-2 border-b border-white/5 px-4 py-2 text-xs md:hidden">
-        <PlaybackControls player={player} />
+        <PlaybackControls
+          player={player}
+          scrollInvert={scrollInvert}
+          onScrollInvert={updateScrollInvert}
+        />
       </div>
 
       <main className="flex flex-1 items-center justify-center px-4 py-6 md:py-10">
@@ -202,6 +226,7 @@ export function App() {
             onSkip={deck.skipCard}
             onUndo={deck.undoLast}
             playback={playback}
+            scrollInvert={scrollInvert}
           />
         ) : (
           <div className="max-w-sm text-center">
@@ -253,7 +278,15 @@ function Shell({ children }: { children: ReactNode }) {
   );
 }
 
-function PlaybackControls({ player }: { player: ReturnType<typeof usePlayer> }) {
+function PlaybackControls({
+  player,
+  scrollInvert,
+  onScrollInvert,
+}: {
+  player: ReturnType<typeof usePlayer>;
+  scrollInvert: boolean;
+  onScrollInvert: (on: boolean) => void;
+}) {
   return (
     <>
       <label className="flex cursor-pointer items-center gap-2 text-neutral-300">
@@ -265,6 +298,16 @@ function PlaybackControls({ player }: { player: ReturnType<typeof usePlayer> }) 
         />
         Auto-play preview
       </label>
+      {/* Only relevant to trackpad wheel-scrolling, i.e. desktop. */}
+      <label className="hidden cursor-pointer items-center gap-2 text-neutral-300 md:flex">
+        <input
+          type="checkbox"
+          checked={scrollInvert}
+          onChange={(e) => onScrollInvert(e.target.checked)}
+          className="h-4 w-4 accent-emerald-500"
+        />
+        Invert scroll
+      </label>
       {player.needsReconnect ? (
         <button
           onClick={() => void beginLogin().catch(() => {})}
@@ -275,7 +318,9 @@ function PlaybackControls({ player }: { player: ReturnType<typeof usePlayer> }) 
       ) : player.error ? (
         <span className="truncate text-rose-400">{player.error}</span>
       ) : (
-        <span className="text-neutral-600">plays ~15s from the hook</span>
+        <span className="hidden text-neutral-600 lg:inline">
+          plays ~15s from the hook
+        </span>
       )}
     </>
   );
