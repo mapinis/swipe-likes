@@ -2,9 +2,11 @@ export const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? "";
 
 export const MOCK = import.meta.env.VITE_MOCK === "1";
 
+// import.meta.env.BASE_URL is Vite's configured base ("/" locally,
+// "/swipe-likes/" on Pages), so the redirect works from either origin.
 export const REDIRECT_URI =
   typeof window !== "undefined"
-    ? `${window.location.origin}/callback`
+    ? `${window.location.origin}${import.meta.env.BASE_URL}callback`
     : "http://127.0.0.1:5173/callback";
 
 // The Web Playback SDK requires streaming + user-read-email + user-read-private;

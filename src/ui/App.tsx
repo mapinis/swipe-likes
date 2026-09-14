@@ -85,17 +85,22 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (window.location.pathname === "/callback") {
+    // Detect the OAuth redirect by its query params rather than a fixed path, so
+    // it works both locally (/callback) and on GitHub Pages (bounced to the base
+    // by 404.html). Clean the URL back to the app root afterward.
+    const params = new URLSearchParams(window.location.search);
+    const home = import.meta.env.BASE_URL;
+    if (!MOCK && (params.has("code") || params.has("error"))) {
       setPhase("loading");
       setLoadingMsg("Finishing sign-in…");
       handleRedirectCallback()
         .then(() => {
-          window.history.replaceState({}, "", "/");
+          window.history.replaceState({}, "", home);
           return loadData();
         })
         .catch((e) => {
           // Clear the (now-used) code from the URL so a reload can't re-exchange it.
-          window.history.replaceState({}, "", "/");
+          window.history.replaceState({}, "", home);
           setErrorMsg((e as Error).message);
           setPhase("error");
         });
