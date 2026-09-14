@@ -6,10 +6,12 @@ export function CommitReview({
   items,
   onCancel,
   onConfirm,
+  onRescue,
 }: {
   items: ScoredTrack[];
   onCancel: () => void;
   onConfirm: () => Promise<void>;
+  onRescue: (trackId: string) => void;
 }) {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -33,15 +35,24 @@ export function CommitReview({
       <div className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-neutral-900 ring-1 ring-white/10 sm:rounded-3xl">
         <div className="border-b border-white/10 p-5">
           <h2 className="text-xl font-semibold text-neutral-50">
-            Toss {items.length} song{items.length === 1 ? "" : "s"}?
+            {items.length === 0
+              ? "Nothing to toss"
+              : `Toss ${items.length} song${items.length === 1 ? "" : "s"}?`}
           </h2>
           <p className="mt-1 text-sm text-neutral-400">
-            They'll be copied to your private{" "}
-            <span className="font-medium text-neutral-200">
-              "{SWIPED_OUT_PLAYLIST_NAME}"
-            </span>{" "}
-            playlist first, then removed from Liked Songs. You can re-like them
-            anytime.
+            {items.length === 0
+              ? "You rescued everything. Nothing will be removed."
+              : (
+                <>
+                  They'll be copied to your private{" "}
+                  <span className="font-medium text-neutral-200">
+                    "{SWIPED_OUT_PLAYLIST_NAME}"
+                  </span>{" "}
+                  playlist first, then removed from Liked Songs. Tap{" "}
+                  <span className="font-medium text-emerald-400">Rescue</span> to
+                  keep one. You can re-like them anytime.
+                </>
+              )}
           </p>
         </div>
 
@@ -62,6 +73,14 @@ export function CommitReview({
                 </p>
               </div>
               <span className="text-xs text-neutral-600">{c.score}</span>
+              <button
+                onClick={() => onRescue(c.saved.track.id)}
+                disabled={busy}
+                aria-label={`Rescue ${c.saved.track.name}`}
+                className="shrink-0 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-50"
+              >
+                ♥ Rescue
+              </button>
             </li>
           ))}
         </ul>
@@ -83,15 +102,17 @@ export function CommitReview({
             disabled={busy}
             className="flex-1 rounded-full bg-neutral-800 py-3 font-medium text-neutral-200 transition hover:bg-neutral-700 disabled:opacity-50"
           >
-            Back
+            {items.length === 0 ? "Done" : "Back"}
           </button>
-          <button
-            onClick={confirm}
-            disabled={busy || items.length === 0}
-            className="flex-1 rounded-full bg-rose-600 py-3 font-semibold text-white transition hover:bg-rose-500 disabled:opacity-50"
-          >
-            {busy ? "Working…" : "Toss them"}
-          </button>
+          {items.length > 0 && (
+            <button
+              onClick={confirm}
+              disabled={busy}
+              className="flex-1 rounded-full bg-rose-600 py-3 font-semibold text-white transition hover:bg-rose-500 disabled:opacity-50"
+            >
+              {busy ? "Working…" : "Toss them"}
+            </button>
+          )}
         </div>
       </div>
     </div>

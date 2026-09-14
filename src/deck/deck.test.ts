@@ -5,6 +5,7 @@ import {
   currentCard,
   decide,
   emptyDeck,
+  rescue,
   skip,
   tossedIds,
   undo,
@@ -56,6 +57,17 @@ test("deciding advances the deck and records the decision", () => {
     skipped: 0,
     committed: 0,
   });
+});
+
+test("rescue flips a tossed track to keep so it drops out of the toss pile", () => {
+  let s = decide(emptyDeck, "a", "toss");
+  s = decide(s, "b", "toss");
+  expect(tossedIds(s)).toEqual(["a", "b"]);
+  s = rescue(s, "a");
+  expect(tossedIds(s)).toEqual(["b"]);
+  expect(s.decisions.a).toBe("keep");
+  // Rescuing something that isn't tossed is a no-op.
+  expect(rescue(s, "c")).toBe(s);
 });
 
 test("skip hides the card without recording a decision; undo brings it back", () => {

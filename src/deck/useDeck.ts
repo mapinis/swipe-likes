@@ -6,6 +6,7 @@ import {
   decide,
   emptyDeck,
   pendingDeck,
+  rescue,
   skip,
   tossedIds,
   undo,
@@ -72,6 +73,10 @@ export function useDeck(scored: ScoredTrack[]) {
     [],
   );
   const undoLast = useCallback(() => setState((s) => undo(s)), []);
+  const rescueToss = useCallback(
+    (trackId: string) => setState((s) => rescue(s, trackId)),
+    [],
+  );
   const applyCommit = useCallback(() => setState((s) => commitTossed(s)), []);
   const reset = useCallback(() => setState(emptyDeck), []);
 
@@ -107,6 +112,7 @@ export function useDeck(scored: ScoredTrack[]) {
     swipe,
     skipCard,
     undoLast,
+    rescueToss,
     applyCommit,
     reset,
   };

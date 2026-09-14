@@ -307,6 +307,7 @@ export function App() {
           items={tossedCards}
           onCancel={() => setReviewing(false)}
           onConfirm={handleConfirmCommit}
+          onRescue={deck.rescueToss}
         />
       )}
 

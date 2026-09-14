@@ -42,6 +42,15 @@ export function skip(state: DeckState, trackId: string): DeckState {
   };
 }
 
+/** Pull a track out of the toss pile by flipping it to a keep. */
+export function rescue(state: DeckState, trackId: string): DeckState {
+  if (state.decisions[trackId] !== "toss") return state;
+  return {
+    ...state,
+    decisions: { ...state.decisions, [trackId]: "keep" },
+  };
+}
+
 export function undo(state: DeckState): DeckState {
   if (state.undoStack.length === 0) return state;
   const undoStack = state.undoStack.slice(0, -1);
