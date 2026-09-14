@@ -73,6 +73,30 @@ VITE_MOCK=1 npm run dev
 Loads a sample library so you can see the deck, swiping, undo, and the commit
 review without connecting an account.
 
+## Deploy to GitHub Pages
+
+The repo ships a workflow ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml))
+that builds and publishes to Pages on every push to `main`. It builds with the
+sub-path base `/swipe-likes/` (the repo name) and injects the Client ID from an
+Actions variable. One-time setup:
+
+1. **Enable Pages**: repo **Settings → Pages → Source → GitHub Actions**.
+2. **Add the Client ID** as an Actions *variable* (not a secret — it's public in
+   the PKCE flow): **Settings → Secrets and variables → Actions → Variables → New
+   repository variable**, name `VITE_SPOTIFY_CLIENT_ID`, value = your Client ID.
+3. **Add the hosted redirect URI** to your Spotify app
+   (Dashboard → your app → Settings → Redirect URIs):
+   ```
+   https://<your-user>.github.io/swipe-likes/callback
+   ```
+   (and make sure your account is still on the app's User Management allow-list).
+4. Push to `main` — the workflow builds and deploys; the app lives at
+   `https://<your-user>.github.io/swipe-likes/`.
+
+If you rename the repo, update `BASE_PATH` in the workflow and `base` in
+[`public/404.html`](public/404.html) to match. The local redirect URI
+(`http://127.0.0.1:5173/callback`) is unchanged.
+
 ## Using it
 
 - **Drag, two-finger scroll, ←, or ✕** to toss; **→ / ♥** (or scroll/drag right)
@@ -83,9 +107,11 @@ review without connecting an account.
 - **Keep** and **toss** are remembered locally (they survive a reload).
   **Skip** is "see it again later" — it hides the card for now but the song
   comes back the next time you reload or refresh.
-- Nothing changes on Spotify until you hit **Review** and confirm. On confirm,
-  tossed songs are copied to your private **"Swiped Out"** playlist, then removed
-  from Liked Songs. Re-like them anytime if you change your mind.
+- Nothing changes on Spotify until you hit **Review** and confirm. In the review
+  list, tap **♥ Rescue** on any song to pull it back out of the toss pile. On
+  confirm, the remaining tossed songs are copied to your private **"Swiped Out"**
+  playlist, then removed from Liked Songs. Re-like them anytime if you change your
+  mind.
 - **▶ Preview** plays ~15 seconds from ~30% into the track (the "hook"). Tick
   **Auto-play preview** to start the snippet automatically whenever a new card
   appears. Preview needs the Web Playback SDK scopes — if you connected before
@@ -112,8 +138,5 @@ npm run build      # production build to dist/
 - **API currency**: uses the post-Feb-2026 write endpoints (`POST /me/playlists`,
   `POST /playlists/{id}/items`, `DELETE /me/library`); the pre-2026 equivalents
   now return 403 for development-mode apps.
-- **Genres are best-effort**: if the artist-genre endpoint is unavailable for
-  your app, the genre-drift factor is simply skipped and the other factors are
-  re-weighted.
 - Your data is cached locally (IndexedDB) and your tokens in `localStorage`;
   nothing leaves your browser except calls to Spotify.
